@@ -99,10 +99,10 @@ int mm_init(void) // 최초 가용 블록으로 힙 생성
 }
 
 /*
- * mm_malloc - Allocate a block by incrementing the brk pointer.
- *     Always allocate a block whose size is a multiple of the alignment.
+    mm_malloc - Allocate a block by incrementing the brk pointer.
+    Always allocate a block whose size is a multiple of the alignment.
  */
-void *mm_malloc(size_t size)
+void *mm_malloc(size_t size) // 가용 리스트에서 블록 할당 하기
 {
     size_t asize;      // Adjusted block size
     size_t extendsize; // Amount to extend heap if no fit
@@ -119,7 +119,7 @@ void *mm_malloc(size_t size)
     if (size <= DSIZE)     // 8 바이트 이하이면
         asize = 2 * DSIZE; // 최소 블록 크기 16바이트 할당 (헤더 4 + 푸터 4 + 저장공간 8)
     else
-        asize = DSIZE * ((size + (DSIZE) + (DSIZE - 1)) / DSIZE); // 8의 배수로 올림 처리
+        asize = DSIZE * ((size + (DSIZE) + (ALIGNMENT - 1)) / ALIGNMENT); // 8의 배수로 올림 처리
 
     /* Search the free list for a fit */
     // 가용 블록을 가용리스트에서 검색하고 할당기는 요청한 블록을 배치
