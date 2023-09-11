@@ -62,10 +62,10 @@ void *mem_sbrk(int incr)
     if ( (incr < 0) || ((mem_brk + incr) > mem_max_addr)) {
 	errno = ENOMEM;
 	fprintf(stderr, "ERROR: mem_sbrk failed. Ran out of memory...\n");
-	return (void *)-1;
+    return (void *)-1; // 리턴값이 void* 여야해서 형변환
     }
     mem_brk += incr;
-    return (void *)old_brk;
+    return (void *)old_brk; // old_brk를 리턴하는 이유는 새로 늘어난 힙의 첫번째 주소이기 때문이다.
 }
 
 /*

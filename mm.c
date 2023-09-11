@@ -73,10 +73,8 @@ team_t team = {
 #define FTRP(bp) ((char *)(bp) + GET_SIZE(HDRP(bp)) - DSIZE)
 
 /* Given block ptr bp, compute address of next and previous blocks */
-#define NEXT_BLKP(bp) \
-    ((char *)(bp) + GET_SIZE(((char *)(bp)-WSIZE))) // 다음 블록의 포인터
-#define PREV_BLKP(bp) \
-    ((char *)(bp)-GET_SIZE(((char *)(bp)-DSIZE))) // 이전 블록의 포인터
+#define NEXT_BLKP(bp) ((char *)(bp) + GET_SIZE(((char *)(bp)-WSIZE))) // 다음 블록의 포인터
+#define PREV_BLKP(bp) ((char *)(bp)-GET_SIZE(((char *)(bp)-DSIZE)))   // 이전 블록의 포인터
 
 static void *heap_listp;
 static char *last_bp; // next fit에서 사용할 변수 선언
@@ -130,10 +128,8 @@ void *mm_malloc(size_t size) // 가용 리스트에서 블록 할당 하기
     // size를 바탕으로 헤더와 푸터의 공간 확보
     // 8바이트는 정렬조건을 만족하기 위해
     // 추가 8바이트는 헤더와 푸터 오버헤드를 위해서 확보
-    if (size <= DSIZE) // 8 바이트 이하이면
-        asize =
-            2 *
-            DSIZE; // 최소 블록 크기 16바이트 할당 (헤더 4 + 푸터 4 + 저장공간 8)
+    if (size <= DSIZE)     // 8 바이트 이하이면
+        asize = 2 * DSIZE; // 최소 블록 크기 16바이트 할당 (헤더 4 + 푸터 4 + 저장공간 8)
     else
         asize = DSIZE * ((size + (DSIZE) + (ALIGNMENT - 1)) / ALIGNMENT); // 8의 배수로 올림 처리
 
@@ -171,21 +167,28 @@ void mm_free(void *bp)
  */
 void *mm_realloc(void *bp, size_t size)
 {
-    void *old_bp = bp;
-    void *new_bp;
-    size_t copySize;
-
-    new_bp = mm_malloc(size);
-    if (new_bp == NULL)
-        return NULL;
-    copySize = GET_SIZE(HDRP(old_bp));
-    if (size < copySize)
-        copySize = size;
-    // 메모리의 특정한 부분으로부터 얼마까지의 부분을 다른 메모리 영역으로
-    // 복사해주는 함수(old_bp로부터 copysize만큼의 문자를 new_bp로 복사해라
-    memcpy(new_bp, old_bp, copySize);
-    mm_free(old_bp);
-    return new_bp;
+    size_t old_size = GET_SIZE(HDRP(bp));
+    size_t new_size = size + DSIZE; // 안되면 2 * wsize
+    if (new_size <= old_size)
+        return bp;
+    else
+    {
+        size_t current_size = old_size + GET_SIZE(HDRP(NEXT_BLKP(bp)));
+        if (!GET_ALLOC(HDRP(NEXT_BLKP(bp))) && current_size >= new_size)
+        {
+            PUT(HDRP(bp), PACK(current_size, 1));
+            PUT(FTRP(bp), PACK(current_size, 1));
+            return bp;
+        }
+        else
+        {
+            void *new_bp = mm_malloc(new_size);
+            place(new_bp, new_size);
+            memcpy(new_bp, bp, new_size);
+            mm_free(bp);
+            return new_bp;
+        }
+    }
 }
 
 static void *extend_heap(size_t words)
