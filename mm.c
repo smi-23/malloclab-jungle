@@ -234,9 +234,9 @@ void mm_free(void *bp)
 void *mm_realloc(void *bp, size_t size)
 {
     size_t old_size = GET_SIZE(HDRP(bp));
-    size_t new_size = size + DSIZE; // 안되면 2 * wsize
-    if (size <= DSIZE)              // 8 바이트 이하이면
-        new_size = 2 * DSIZE;       // 최소 블록 크기 16바이트 할당 (헤더 4 + 푸터 4 + 저장공간 8)
+    size_t new_size;          // 안되면 2 * wsize
+    if (size <= DSIZE)        // 8 바이트 이하이면
+        new_size = 2 * DSIZE; // 최소 블록 크기 16바이트 할당 (헤더 4 + 푸터 4 + 저장공간 8)
     else
         new_size = DSIZE * ((size + (DSIZE) + (ALIGNMENT - 1)) / ALIGNMENT); // 8의 배수로 올림 처리
 
