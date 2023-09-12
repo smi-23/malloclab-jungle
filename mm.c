@@ -43,8 +43,8 @@ team_t team = {
 #define ALIGN(size) (((size) + (ALIGNMENT - 1)) & ~0x7)
 
 /* Basic constants and macros */
-#define WSIZE 4            /* Word and header/footer size (bytes) */
-#define DSIZE 8            /* Double word size (bytes) */
+#define WSIZE 4             /* Word and header/footer size (bytes) */
+#define DSIZE 8             /* Double word size (bytes) */
 #define CHUNKSIZE (1 << 10) /* Extend heap by this amount (bytes) 힙 확장을 위한 기본 크기(=초기 빈 블록의 크기) */
 
 /* MAX ~ PREV_BLKP 함수는 힙에 접근 순회하는데 사용할 매크로 */
@@ -91,19 +91,20 @@ static void removeFreeBlock(void *bp);
 int mm_init(void) // 최초 가용 블록으로 힙 생성
 {
     /* Create the initial empty heap */
-    if ((heap_listp = mem_sbrk(6 * WSIZE)) == (void *)-1) // 4워드 크기의 힙 생성, heap_listp에 힙의 시작 주소값 할당
+    if ((heap_listp = mem_sbrk(8 * WSIZE)) == (void *)-1) // 4워드 크기의 힙 생성, heap_listp에 힙의 시작 주소값 할당
         return -1;
     PUT(heap_listp, 0);                                // Alignment padding
-    PUT(heap_listp + (1 * WSIZE), PACK(2 * DSIZE, 1)); // Prologue header
-    PUT(heap_listp + (2 * WSIZE), (int)NULL);          // Prologue prep 루트 역할
-    PUT(heap_listp + (3 * WSIZE), (int)NULL);          // Prologue sucp
-    PUT(heap_listp + (4 * WSIZE), PACK(2 * DSIZE, 1)); // Prologue footer
+    PUT(heap_listp + (1 * WSIZE), 0);                  // Alignment padding
+    PUT(heap_listp + (2 * WSIZE), 0);                  // Alignment padding
+    PUT(heap_listp + (3 * WSIZE), PACK(2 * DSIZE, 1)); // Prologue header
+    PUT(heap_listp + (4 * WSIZE), (int)NULL);          // Prologue prep 루트 역할
+    PUT(heap_listp + (5 * WSIZE), (int)NULL);          // Prologue sucp
+    PUT(heap_listp + (6 * WSIZE), PACK(2 * DSIZE, 1)); // Prologue footer
 
     // 에필로그 header : 프로그램이 할당한 마지막 블록의 뒤에 위치하며, 블록이
     // 할당되지 않은 상태를 나타냄
-    PUT(heap_listp + (5 * WSIZE), PACK(0, 1)); // Epilogue header
-    free_listp = heap_listp + DSIZE;
-
+    PUT(heap_listp + (7 * WSIZE), PACK(0, 1)); // Epilogue header
+    free_listp = heap_listp + (2 * DSIZE);
     /* Extend the empty heap with a free block of CHUNKSIZE bytes */
     if (extend_heap(CHUNKSIZE / WSIZE) == NULL) // 힙을 CHUNKSIZE bytes로 확장
         return -1;
@@ -232,28 +233,28 @@ void mm_free(void *bp)
  */
 void *mm_realloc(void *bp, size_t size)
 {
-    // size_t old_size = GET_SIZE(HDRP(bp));
-    // size_t new_size = size + DSIZE; // 안되면 2 * wsize
-    // if (new_size <= old_size)
-    //     return bp;
-    // else
-    // {
-    //     size_t current_size = old_size + GET_SIZE(HDRP(NEXT_BLKP(bp)));
-    //     if (!GET_ALLOC(HDRP(NEXT_BLKP(bp))) && current_size >= new_size)
-    //     {
-    //         PUT(HDRP(bp), PACK(current_size, 1));
-    //         PUT(FTRP(bp), PACK(current_size, 1));
-    //         return bp;
-    //     }
-    //     else
-    //     {
-    //         void *new_bp = mm_malloc(new_size);
-    //         place(new_bp, new_size);
-    //         memcpy(new_bp, bp, new_size);
-    //         mm_free(bp);
-    //         return new_bp;
-    //     }
-    // }
+    size_t old_size = GET_SIZE(HDRP(bp));
+    size_t new_size = size + DSIZE; // 안되면 2 * wsize
+    if (size <= DSIZE)              // 8 바이트 이하이면
+        new_size = 2 * DSIZE;       // 최소 블록 크기 16바이트 할당 (헤더 4 + 푸터 4 + 저장공간 8)
+    else
+        new_size = DSIZE * ((size + (DSIZE) + (ALIGNMENT - 1)) / ALIGNMENT); // 8의 배수로 올림 처리
+
+    if (new_size <= old_size)
+    {
+        return bp;
+    }
+    else
+    {
+        size_t current_size = old_size + GET_SIZE(HDRP(NEXT_BLKP(bp)));
+        if (!GET_ALLOC(HDRP(NEXT_BLKP(bp))) && current_size >= new_size)
+        {
+            removeFreeBlock(NEXT_BLKP(bp));
+            PUT(HDRP(bp), PACK(current_size, 1));
+            PUT(FTRP(bp), PACK(current_size, 1));
+            return bp;
+        }
+    }
     void *old_bp = bp;
     void *new_bp;
     size_t copySize;
