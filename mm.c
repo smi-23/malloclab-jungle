@@ -43,10 +43,10 @@ team_t team = {
 #define ALIGN(size) (((size) + (ALIGNMENT - 1)) & ~0x7)
 
 /* Basic constants and macros */
-#define WSIZE 4            /* Word and header/footer size (bytes) */
-#define DSIZE 8            /* Double word size (bytes) */
-#define CHUNKSIZE (1 << 7) /* Extend heap by this amount (bytes) 힙 확장을 위한 기본 크기(=초기 빈 블록의 크기) */
-#define LISTLIMIT 10       /* segre list의 개수 */
+#define WSIZE 4             /* Word and header/footer size (bytes) */
+#define DSIZE 8             /* Double word size (bytes) */
+#define CHUNKSIZE (1 << 10) /* Extend heap by this amount (bytes) 힙 확장을 위한 기본 크기(=초기 빈 블록의 크기) */
+#define LISTLIMIT 16      /* segre list의 개수 */
 
 /* MAX ~ PREV_BLKP 함수는 힙에 접근 순회하는데 사용할 매크로 */
 #define MAX(x, y) (x > y ? x : y)
@@ -76,7 +76,6 @@ team_t team = {
 #define SUCP(bp) (*(void **)(bp + WSIZE))
 
 static void *heap_listp;
-static void *free_listp;
 static void *segregation_list[LISTLIMIT];
 static void *extend_heap(size_t words);
 static void *coalesce(void *bp);
@@ -92,6 +91,7 @@ static void removeFreeBlock(void *bp);
  */
 int mm_init(void) // 최초 가용 블록으로 힙 생성
 {
+
     int list;
     for (list = 0; list < LISTLIMIT; list++)
     {
@@ -102,17 +102,44 @@ int mm_init(void) // 최초 가용 블록으로 힙 생성
     if ((heap_listp = mem_sbrk(4 * WSIZE)) == (void *)-1) // 4워드 크기의 힙 생성, heap_listp에 힙의 시작 주소값 할당
         return -1;
     PUT(heap_listp, 0);                                // Alignment padding
-    PUT(heap_listp + (1 * WSIZE), PACK(2 * DSIZE, 1)); // Prologue header
-    PUT(heap_listp + (2 * WSIZE), PACK(2 * DSIZE, 1)); // Prologue footer
+    PUT(heap_listp + (1 * WSIZE), PACK(DSIZE, 1)); // Prologue header
+    PUT(heap_listp + (2 * WSIZE), PACK(DSIZE, 1)); // Prologue footer
 
     // 에필로그 header : 프로그램이 할당한 마지막 블록의 뒤에 위치하며, 블록이
     // 할당되지 않은 상태를 나타냄
     PUT(heap_listp + (3 * WSIZE), PACK(0, 1)); // Epilogue header
-    free_listp = heap_listp + DSIZE;
+    heap_listp += DSIZE;
+    if (extend_heap(4) == NULL)
+        return -1;
     /* Extend the empty heap with a free block of CHUNKSIZE bytes */
     if (extend_heap(CHUNKSIZE / WSIZE) == NULL) // 힙을 CHUNKSIZE bytes로 확장
         return -1;
     return 0;
+
+    // int list;
+
+    // /* Create the initial empty heap */
+    // if ((heap_listp = mem_sbrk((LISTLIMIT + 4) * WSIZE)) == (void *)-1) // 4워드 크기의 힙 생성, heap_listp에 힙의 시작 주소값 할당
+    //     return -1;
+    // PUT(heap_listp, 0);                                              // Alignment padding
+    // PUT(heap_listp + (1 * WSIZE), PACK((LISTLIMIT + 2) * WSIZE, 1)); // Prologue header
+    // for (list = 0; list < LISTLIMIT; list++)
+    // {
+    //     PUT(heap_listp + ((2 + list) * WSIZE), NULL);
+    //     // printf("segregation_list[%d] = %d\n", list, segregation_list[list]);
+    // }
+    // PUT(heap_listp + ((LISTLIMIT + 2) * WSIZE), PACK((LISTLIMIT + 2) * WSIZE, 1)); // Prologue footer
+
+    // // 에필로그 header : 프로그램이 할당한 마지막 블록의 뒤에 위치하며, 블록이
+    // // 할당되지 않은 상태를 나타냄
+    // PUT(heap_listp + ((LISTLIMIT + 3) * WSIZE), PACK(0, 1)); // Epilogue header
+    // heap_listp += DSIZE;
+    // if (extend_heap(4) == NULL) // magic code / 10 and 12 score 90
+    //     return -1;
+    // /* Extend the empty heap with a free block of CHUNKSIZE bytes */
+    // if (extend_heap(CHUNKSIZE / WSIZE) == NULL) // 힙을 CHUNKSIZE bytes로 확장
+    //     return -1;
+    // return 0;
 }
 
 static void *extend_heap(size_t words)
@@ -188,7 +215,7 @@ static void *coalesce(void *bp)
  */
 void *mm_malloc(size_t size) // 가용 리스트에서 블록 할당 하기
 {
-    size_t asize;      // Adjusted block size
+    size_t asize; // Adjusted block size
     size_t extendsize; // Amount to extend heap if no fit
     char *bp;
 
@@ -204,7 +231,10 @@ void *mm_malloc(size_t size) // 가용 리스트에서 블록 할당 하기
         asize = 2 * DSIZE; // 최소 블록 크기 16바이트 할당 (헤더 4 + 푸터 4 + 저장공간 8)
     else
         asize = DSIZE * ((size + (DSIZE) + (ALIGNMENT - 1)) / ALIGNMENT); // 8의 배수로 올림 처리
-
+    // while (asize < size + DSIZE) // 2의 배수로 사이즈 설정 최소 16
+    // {
+    //     asize <<= 1;
+    // }
     /* Search the free list for a fit */
     // 가용 블록을 가용리스트에서 검색하고 할당기는 요청한 블록을 배치
     if ((bp = find_fit(asize)) != NULL)
@@ -282,24 +312,35 @@ static void *find_fit(size_t asize)
     // 적절한 가용 블록을 검색하고 가용블록의 주소를 반환한다
     // first fit 검색을 수행한다. -> 리스트 처음부터 탐색하여 가용블록 찾기
     void *bp;
-    int list = 0;
+
+    // int list = LISTLIMIT-1; // 90 score
+    int list = 0; // 89 score
+
     size_t searchsize = asize;
 
     while (list < LISTLIMIT)
     {
+        // (list가 현재 0~19이므로)가용블록을 못찾아서 19번째 리스트에 도달하거나,
+        // (19번째 list에는 무조건 넣어야 함)
+        // 나보다 큰 사이즈의 segregation_list가 NULL이 아니면 (나보다 큰 사이즈의 list 안에 free 블록이 존재할 경우)
         if ((list == LISTLIMIT - 1) || (searchsize <= 1) && (segregation_list[list] != NULL))
         {
             bp = segregation_list[list];
-            while ((bp != NULL) && (searchsize > GET_SIZE(HDRP(bp)))){
+
+            while ((bp != NULL) && (asize > GET_SIZE(HDRP(bp))))
+            {
                 bp = SUCP(bp);
             }
             if (bp != NULL)
+            {
                 return bp;
+            }
         }
-        asize >>= 1;
+        searchsize >>= 1;
         list++;
     }
-    return NULL;
+
+    return NULL; /* no fit */
 }
 
 static void place(void *bp, size_t asize)
@@ -316,8 +357,7 @@ static void place(void *bp, size_t asize)
         bp = NEXT_BLKP(bp);
         PUT(HDRP(bp), PACK(csize - asize, 0));
         PUT(FTRP(bp), PACK(csize - asize, 0));
-        // putFreeBlock(bp); // 남은 브록을 free_listp에 추가
-        coalesce(bp);
+        putFreeBlock(bp);
     }
     else
     {
@@ -329,7 +369,6 @@ static void place(void *bp, size_t asize)
 }
 
 // 이해 안됨 질문하기
-// 새로 반환되거나 생성된 가용 블록을 free list 첫 부분에 넣는다
 void putFreeBlock(void *bp)
 {
     int size = GET_SIZE(HDRP(bp));
@@ -339,6 +378,7 @@ void putFreeBlock(void *bp)
         size >>= 1;
         list++;
     }
+
     PREP(bp) = NULL;
     SUCP(bp) = segregation_list[list];
     if (segregation_list[list] != NULL)
@@ -356,10 +396,28 @@ static void removeFreeBlock(void *bp)
         size >>= 1;
         list++;
     }
-    if (PREP(bp) != NULL)
-        SUCP(PREP(bp)) = SUCP(bp);
-    else
+    void *head = segregation_list[list];
+
+    if (bp == head)
+    {
+        if (SUCP(bp) != NULL)
+        {
+            PREP(SUCP(bp)) = NULL;
+        }
         segregation_list[list] = SUCP(bp);
-    if (SUCP(bp) != NULL)
-        PREP(SUCP(bp)) = PREP(bp);
+    }
+    else
+    {
+        SUCP(PREP(bp)) = SUCP(bp);
+        if (SUCP(bp) != NULL)
+        {
+            PREP(SUCP(bp)) = PREP(bp);
+        }
+    }
+    // if (PREP(bp) != NULL)
+    //     SUCP(PREP(bp)) = SUCP(bp);
+    // else
+    //     segregation_list[list] = SUCP(bp);
+    // if (SUCP(bp) != NULL)
+    //     PREP(SUCP(bp)) = PREP(bp);
 }
